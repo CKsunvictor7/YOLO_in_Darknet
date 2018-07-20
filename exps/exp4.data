@@ -1,0 +1,5 @@
+classes= 4
+train  = /mnt/azure_singapore_data_staging/YOLO_DB_exp_train.txt
+valid  = /mnt/azure_singapore_data_staging/YOLO_DB_exp_train.txt
+names = exps/exp4.names
+backup = /mnt/azure_singapore_sec_requl_prod_user_food_images/requl_mobile/YOLO_backup_2/

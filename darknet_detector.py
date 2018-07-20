@@ -31,6 +31,11 @@ from ctypes import *
 import math
 import random
 import os
+import shutil
+import cv2
+import time
+
+SAVE_IMG = True  # save images with bounding boxes in local food_samples
 
 def sample(probs):
     s = sum(probs)
@@ -274,11 +279,27 @@ def detect(net, meta, image, thresh=.5, hier_thresh=.5, nms=.45, debug= False):
     return res
 
 
+def corner_calculater(rect, img_size):
+    """
+    :param rect:
+    :param img_size: = (h, w)
+    :return:
+    """
+    (x, y, h, w) = rect
+    (img_h, img_w) = img_size
+    left_up_corner_x = int(x - w/2) if int(x - w/2) > 0 else 0
+    left_up_corner_y = int(y - h / 2) if int(y - h / 2) > 0 else 0
+
+    right_bottm_corner_x = int(x + w/2) if int(x + w/2) < img_w else img_w
+    right_bottm_corner_y = int(y + h/2) if int(y + h/2) < img_h else img_h
+
+    return (left_up_corner_x, left_up_corner_y), (right_bottm_corner_x, right_bottm_corner_y)
+
+
 netMain = None
 metaMain = None
 altNames = None
-
-def performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yolov3.cfg", weightPath = "yolov3.weights", metaPath= "./data/coco.data", showImage= True, makeImageOnly = False, initOnly= False):
+def performDetect(image_list, thresh= 0.25, configPath = "./cfg/yolov3.cfg", weightPath = "yolov3.weights", metaPath= "./data/coco.data", showImage= True, makeImageOnly = False, initOnly= False):
     """
     Convenience function to handle the detection and returns of objects.
 
@@ -362,11 +383,50 @@ def performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yo
     if initOnly:
         print("Initialized detector")
         return None
-    if not os.path.exists(imagePath):
-        raise ValueError("Invalid image path `"+os.path.abspath(imagePath)+"`")
+    #if not os.path.exists(imagePath):
+    #    raise ValueError("Invalid image path `"+os.path.abspath(imagePath)+"`")
     # Do the detection
     #detections = detect(netMain, metaMain, imagePath, thresh)	# if is used cv2.imread(image)
-    detections = detect(netMain, metaMain, imagePath.encode("ascii"), thresh)
+
+    # remove previous result imgs in food_samples
+    shutil.rmtree('food_samples', ignore_errors=True)
+    os.mkdir('food_samples')
+
+    for imagePath in image_list:
+        s_time = time.time()
+        bboxes = detect(netMain, metaMain, imagePath.encode("ascii"), thresh)
+        print('detection time = ', time.time() - s_time)
+
+        if SAVE_IMG:
+            img = cv2.imread(imagePath)
+            for rect in bboxes:
+                print('category:{} confidence:{} (x, y, w, d)=({}, {}, {}, {})'.format(
+                    rect[0], rect[1], rect[2][0], rect[2][1], rect[2][2], rect[2][3]))
+
+                # only draw rect with larger than 0.5
+                if rect[1] > 0.5:
+                    left_up_corner, right_bottm_corner = corner_calculater((rect[2][0], rect[2][1], rect[2][2], rect[2][3]),
+                                                                           (img.shape[0], img.shape[1]))
+                    # print(left_up_corner)
+                    # print(right_bottm_corner)
+                    # image, up-left, bottom-right, color code, thickness ,
+                    cv2.rectangle(img, left_up_corner, right_bottm_corner, (0, 255, 0), 4)
+                    font = cv2.FONT_HERSHEY_SIMPLEX
+                    text = '{}:{}'.format(rect[0], rect[1])
+                    # img, text to add/ left_up_corner/ font, font size, color, thickness
+                    cv2.putText(img, text, left_up_corner, font, 1, (0, 0, 255), 1)
+                    cv2.imwrite(os.path.join('food_samples', os.path.basename(imagePath)), img)
+
+                    #TODO pil version
+                    """
+                    for box in draw_boxes:
+                        xmin, ymin, xmax, ymax = box[0]*h, box[1]*w, box[2]*h, box[3]*w
+                    draw.rectangle([ymin, xmin, ymax, xmax])
+                    img.show()
+                    """
+
+
+    """
     if showImage:
         try:
             from skimage import io, draw
@@ -419,7 +479,30 @@ def performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yo
             }
         except Exception as e:
             print("Unable to show image: "+str(e))
-    return detections
+    """
+    return None
+
+
+exp_UEC256_gpu6 = {
+    'Model_PATH':"/mnt/YOLO_AB_weights/UEC256_exp6_6000.weights",
+    ".cfg":"/mnt2/dc_projects/AI_DC_YOLO_AB/exps/UEC256_exp6.cfg",
+    ".data":"/mnt2/dc_projects/AI_DC_YOLO_AB/exps/UEC256_test.data",
+    "sample_dir":"/mnt/UEC256_images"
+}
+
+#performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yolov3.cfg", weightPath = "yolov3.weights",
+# metaPath= "./data/coco.data", showImage= True, makeImageOnly = False, initOnly= False):
+
+
+def main():
+    configs = exp_UEC256_gpu6
+    img_list = []
+    with open('/mnt/UEC256_train_test.txt', 'r') as r:
+        for l in r.readlines():
+            img_list.append(l.rstrip())
+    detections = performDetect(image_list=img_list, thresh= 0.25, configPath=configs['.cfg'], weightPath=configs['Model_PATH'],
+                  metaPath=configs['.data'], showImage= False, makeImageOnly = False, initOnly= False)
+    #print(detections)
 
 if __name__ == "__main__":
-    print(performDetect())
+    main()
