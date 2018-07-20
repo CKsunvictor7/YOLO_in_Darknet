@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Yolo-v3 and Yolo-v2 for Windows and Linux
 ### (neural network for object detection)
 
@@ -505,3 +506,6 @@ public:
 #endif
 };
 ```
+=======
+# YOLO_in_Darknet
+>>>>>>> cfaf560f15f9cdfe9601422232c5cc87f8699334
