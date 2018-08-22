@@ -34,8 +34,8 @@ import os
 import shutil
 import cv2
 import time
+from PIL import Image, ImageDraw, ImageFont
 
-SAVE_IMG = True  # save images with bounding boxes in local food_samples
 
 def sample(probs):
     s = sum(probs)
@@ -198,6 +198,7 @@ predict_image = lib.network_predict_image
 predict_image.argtypes = [c_void_p, IMAGE]
 predict_image.restype = POINTER(c_float)
 
+
 def array_to_image(arr):
     import numpy as np
     # need to return old values to avoid python freeing memory
@@ -210,6 +211,7 @@ def array_to_image(arr):
     im = IMAGE(w,h,c,data)
     return im, arr
 
+
 def classify(net, meta, im):
     out = predict_image(net, im)
     res = []
@@ -221,6 +223,7 @@ def classify(net, meta, im):
         res.append((nameTag, out[i]))
     res = sorted(res, key=lambda x: -x[1])
     return res
+
 
 def detect(net, meta, image, thresh=.5, hier_thresh=.5, nms=.45, debug= False):
     """
@@ -299,6 +302,8 @@ def corner_calculater(rect, img_size):
 netMain = None
 metaMain = None
 altNames = None
+
+
 def performDetect(image_list, thresh= 0.25, configPath = "./cfg/yolov3.cfg", weightPath = "yolov3.weights", metaPath= "./data/coco.data", showImage= True, makeImageOnly = False, initOnly= False):
     """
     Convenience function to handle the detection and returns of objects.
@@ -389,22 +394,37 @@ def performDetect(image_list, thresh= 0.25, configPath = "./cfg/yolov3.cfg", wei
     #detections = detect(netMain, metaMain, imagePath, thresh)	# if is used cv2.imread(image)
 
     # remove previous result imgs in food_samples
-    shutil.rmtree('food_samples', ignore_errors=True)
-    os.mkdir('food_samples')
+    # shutil.rmtree('food_samples', ignore_errors=True)
+    # os.mkdir('food_samples')
 
     for imagePath in image_list:
+        print('--------------- Detecting {} ---------------'.format(imagePath))
         s_time = time.time()
+        """
+        bboxes is a list, each element is a list: 
+        ('obj_label', confidence, (bounding_box_x_px, bounding_box_y_px, bounding_box_width_px, bounding_box_height_px)
+        """
         bboxes = detect(netMain, metaMain, imagePath.encode("ascii"), thresh)
         print('detection time = ', time.time() - s_time)
+        print('nb of bbox = ', len(bboxes))
 
-        if SAVE_IMG:
-            img = cv2.imread(imagePath)
+        with open(os.path.join(eval_config['SAVE_DETECTION_DIR'], str(os.path.splitext(os.path.basename(imagePath))[0]) + '.txt'), 'a') as w:
             for rect in bboxes:
-                print('category:{} confidence:{} (x, y, w, d)=({}, {}, {}, {})'.format(
-                    rect[0], rect[1], rect[2][0], rect[2][1], rect[2][2], rect[2][3]))
+                if rect[1] > eval_config['SAVE_DETECTION_THRESHOLD']:
+                    # output format = category confidence box
+                    w.write('{} {} {} {} {} {}\n'.format(
+                            rect[0], rect[1], rect[2][0], rect[2][1], rect[2][2], rect[2][3]))
+                    if eval_config['DETAIL']:
+                        print('category:{} confidence:{} (x, y, w, d)=({}, {}, {}, {})'.format(
+                            rect[0], rect[1], rect[2][0], rect[2][1], rect[2][2], rect[2][3]))
 
+                if eval_config['SAVE_LABEL'] and rect[1] > eval_config['SAVE_LABEL_THRESHOLD']:
+                    with open(os.path.join(eval_config['SAVE_LABEL_DIR'], str(os.path.splitext(os.path.basename(imagePath))[0]) + '.txt'), 'a') as ww:
+                        ww.write('{} {} {} {} {} \n'.format(
+                            rect[0], rect[2][0], rect[2][1], rect[2][2], rect[2][3]))
+                """
                 # only draw rect with larger than 0.5
-                if rect[1] > 0.5:
+                if eval_config['SAVE_IMG'] and rect[1] > eval_config['SAVE_IMG_THRESHOLD']:
                     left_up_corner, right_bottm_corner = corner_calculater((rect[2][0], rect[2][1], rect[2][2], rect[2][3]),
                                                                            (img.shape[0], img.shape[1]))
                     # print(left_up_corner)
@@ -412,20 +432,32 @@ def performDetect(image_list, thresh= 0.25, configPath = "./cfg/yolov3.cfg", wei
                     # image, up-left, bottom-right, color code, thickness ,
                     cv2.rectangle(img, left_up_corner, right_bottm_corner, (0, 255, 0), 4)
                     font = cv2.FONT_HERSHEY_SIMPLEX
-                    text = '{}:{}'.format(rect[0], rect[1])
+                    text = '{}:{:0.2f}'.format(rect[0], float(rect[1]))
                     # img, text to add/ left_up_corner/ font, font size, color, thickness
-                    cv2.putText(img, text, left_up_corner, font, 1, (0, 0, 255), 1)
-                    cv2.imwrite(os.path.join('food_samples', os.path.basename(imagePath)), img)
+                    # due to sometimes left_up_corner's location is bad for Text,
+                    # put Text in the middle of bbox
+                    tect_location = (left_up_corner[0],
+                                     int((left_up_corner[1]+right_bottm_corner[1])/2))
+                    cv2.putText(img, text, tect_location, font, 1, (0, 0, 0), 2)
+                    cv2.imwrite(os.path.join(eval_config['SAVE_IMG_DIR'], os.path.basename(imagePath)), img)
+                """
+        """
+        if eval_config['SAVE_IMG'] and bboxes:
+            # remove the highly overlapped bboxes
+            r_bboxs = [bboxes[0]]
+            for bbox in bboxes[1:]:
+                for r_bbox in r_bboxs:
+                    print('bbox = ', bbox)
+                    if overlapped_ratio(bbox[2:], r_bbox[2:]) > eval_config['overlapped_ratio_threshold']:
+                        break
+                    else:
+                        r_bboxs.append(bbox)
 
-                    #TODO pil version
-                    """
-                    for box in draw_boxes:
-                        xmin, ymin, xmax, ymax = box[0]*h, box[1]*w, box[2]*h, box[3]*w
-                    draw.rectangle([ymin, xmin, ymax, xmax])
-                    img.show()
-                    """
-
-
+            vis_path = os.path.join(eval_config['SAVE_IMG_DIR'],
+                                    os.path.basename(imagePath))
+            img = Image.open(imagePath)
+            draw_bbox(img, filename=vis_path, bboxes=r_bboxs)
+        """
     """
     if showImage:
         try:
@@ -483,26 +515,145 @@ def performDetect(image_list, thresh= 0.25, configPath = "./cfg/yolov3.cfg", wei
     return None
 
 
-exp_UEC256_gpu6 = {
-    'Model_PATH':"/mnt/YOLO_AB_weights/UEC256_exp6_6000.weights",
-    ".cfg":"/mnt2/dc_projects/AI_DC_YOLO_AB/exps/UEC256_exp6.cfg",
-    ".data":"/mnt2/dc_projects/AI_DC_YOLO_AB/exps/UEC256_test.data",
-    "sample_dir":"/mnt/UEC256_images"
+gpu6_exp11 = {
+    'Model_PATH':"/mnt/YOLO_AB_weights/UEC256_exp11_25000.weights",
+    ".cfg":"exps/UEC256_exp11.cfg",
+    ".data":"exps/UEC256_exp11.data",
+
 }
 
-#performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yolov3.cfg", weightPath = "yolov3.weights",
-# metaPath= "./data/coco.data", showImage= True, makeImageOnly = False, initOnly= False):
+eval_finc_config = {
+    "sample_dir":'/mnt/finc_data/155',
+    'DETAIL':False,      # whether print details
+    'SAVE_IMG':True,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'SAVE_IMG_DIR':'/mnt/results/exp11_vis_155',
+    'SAVE_DETECTION_DIR':'/mnt/results/exp11_detection_155',
+    'SAVE_DETECTION_THRESHOLD':0.1,
+    'SAVE_LABEL':True,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'/mnt/results/exp11_155',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+eval_UEC_config = {
+    'sample_dir':'',
+    'DETAIL':False,
+    'SAVE_IMG':True,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'SAVE_IMG_DIR':'/mnt/UEC_results/exp11_vis',
+    'SAVE_DETECTION_DIR':'/mnt/UEC_results/exp11_detection',
+    'SAVE_DETECTION_THRESHOLD':0.1,
+    'SAVE_LABEL':True,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'/mnt/UEC_results/exp11',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+
+
+gpu4_exp11 = {
+    'Model_PATH':"/mnt2/models/yolov3/UEC256_exp12_25000.weights",
+    ".cfg":"exps/UEC256_exp12.cfg",
+    ".data":"exps/UEC_exp12.data",
+    "sample_dir":"/mnt2/DB/samples/"
+}
+
+gpu7_exp14 = {
+    'Model_PATH': "/mnt2/model/exp14/exp14_8000.weights",
+    ".cfg": "exps/exp14.cfg",
+    ".data": "exps/exp14.data",
+
+    'sample_dir':'',    # sample_dir or sample_txt, must be only one active
+    'sample_txt':'exps/train_val/exp14_train.txt',
+    'DETAIL':False,
+    'SAVE_IMG':True,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'overlapped_ratio_threshold':0.6,
+    'SAVE_IMG_DIR':'/mnt2/results/exp14_vis',
+    'SAVE_DETECTION_DIR':'/mnt2/results/exp14_detections',
+    'SAVE_DETECTION_THRESHOLD':0.1,
+    'SAVE_LABEL':False,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'-',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+eval_config = gpu7_exp14
+
+
+def overlapped_ratio(box1, box2):
+    """
+    :param area_1 & param area_2: [xmin,  ymin, xmax, ymax]
+    :return: overlapped ratio
+    """
+    print(box1)
+    xmin_1, ymin_1, xmax_1, ymax_1 = float(box1[0]), float(box1[1]), float(box1[2]), float(box1[3])
+    xmin_2, ymin_2, xmax_2, ymax_2 = float(box2[0]), float(box2[1]), float(box2[2]), float(box2[3])
+    overlapped_area = (min(xmax_1, xmax_2) - max(xmin_1, xmin_2))*(min(ymax_1, ymax_2) - max(ymin_1, ymin_2))
+    area_1 = (xmax_1 - xmin_1)*(ymax_1 - ymin_1)
+    area_2 = (xmax_2 - xmin_2)*(ymax_2 - ymin_2)
+    """
+        area_1 = [float(area_1[0]), float(area_1[1]), float(area_1[2]), float(area_1[3])]
+        area_2 = [float(area_2[0]), float(area_2[1]), float(area_2[2]), float(area_2[3])]
+        overlapped_area = (min([area_1[3], area_2[3]]) - max([area_1[1], area_2[1]]))*(min([area_1[2], area_2[2]]) - max([area_1[0], area_2[0]]))
+        if overlapped_area > .0:
+            overlapped_area_1 = overlapped_area/((area_1[2]-area_1[0])*(area_1[3]-area_1[1]))
+            overlapped_area_2 = overlapped_area/((area_2[2]-area_2[0])*(area_2[3]-area_2[1]))
+            # print('{:.4f}  {:.4f}'.format(overlapped_area_1, overlapped_area_2))
+            return max([overlapped_area_1, overlapped_area_2])
+        else:
+            return .0
+    """
+
+    if overlapped_area > 0:
+        return overlapped_area/(area_1 + area_2 - overlapped_area)
+    else:
+        return 0
+
+
+def draw_bbox(img, filename, bboxes):
+    """
+    bboxes = name xmin ymin xmax ymax
+    """
+    color_list= [(0,255,255), (255,255,0), (255,0,255), (255,255,255),  (0,255,0), (0,0,255)]
+    for idx, box in enumerate(bboxes):
+        #LU_corner = (float(box[1][0]) - float(box[1][2])/2, float(box[1][1]) - float(box[1][3])/2)
+        #RD_corner = (float(box[1][0]) + float(box[1][2])/2, float(box[1][1]) + float(box[1][3])/2)
+        LU_corner = (box[1], box[2])
+        RD_corner = (box[3], box[4])
+        if idx < len(color_list):
+            rect_color = color_list[idx]
+            font_color = color_list[idx]
+        else:
+            rect_color = (0, 0, 0)
+            font_color = (0, 0, 0)
+
+        xSize, ySize = img.size
+        # ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeMono.ttf", 28, encoding="unic")
+        fnt = ImageFont.truetype(font="/System/Library/Fonts/SFNSText.ttf", size=min(xSize, ySize) // 10)
+
+        drawimg = ImageDraw.Draw(img)
+        drawimg.rectangle((LU_corner, RD_corner),fill=None,outline=rect_color)
+        drawimg.text(LU_corner, box[0], fill=font_color, font = fnt)
+    #img.show()
+    img.save(filename)
 
 
 def main():
-    configs = exp_UEC256_gpu6
-    img_list = []
-    with open('/mnt/UEC256_train_test.txt', 'r') as r:
-        for l in r.readlines():
-            img_list.append(l.rstrip())
-    detections = performDetect(image_list=img_list, thresh= 0.25, configPath=configs['.cfg'], weightPath=configs['Model_PATH'],
-                  metaPath=configs['.data'], showImage= False, makeImageOnly = False, initOnly= False)
-    #print(detections)
+    #server = gpu7_exp14
+
+    # 2 input method
+    # 1). listdir
+    if eval_config['sample_dir']:
+        img_list = [os.path.join(eval_config['sample_dir'], f) for f in os.listdir(eval_config['sample_dir']) if f.endswith('.jpg')]
+    # 2). read from .txt
+    else:
+        img_list = []
+        with open(eval_config['sample_txt'], 'r') as r:
+            for line in r.readlines():
+                img_list.append(line.rstrip())
+
+    performDetect(image_list=img_list, thresh= 0.01, configPath=eval_config['.cfg'], weightPath=eval_config['Model_PATH'],
+                  metaPath=eval_config['.data'], showImage= False, makeImageOnly = False, initOnly= False)
+
 
 if __name__ == "__main__":
     main()

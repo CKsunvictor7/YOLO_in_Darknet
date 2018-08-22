@@ -1,3 +1,9 @@
+training_log/
+__pycache__/
+.idea
+.ipynb_checkpoints
+*.ipynb
+food_samples
 *.o
 *.dSYM
 *.csv

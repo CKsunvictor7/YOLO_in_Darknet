@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 #%matplotlib inline
 
 
-
+#    training_log/exp14_training_log.txt
 def draw_training_log():
     avg_loss = []
     skip_iteration = 0  # 5000
-    with open('training_log_UEC_test.txt', 'r') as r:
+    with open('training_log_exp13.txt', 'r') as r:
         for c, line in enumerate(r.readlines()):
             if ' avg' in line:
                 if skip_iteration == 0:
