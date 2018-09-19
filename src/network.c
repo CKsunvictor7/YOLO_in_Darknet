@@ -48,6 +48,7 @@ network *load_network(char *cfg, char *weights, int clear)
 	return load_network_custom(cfg, weights, clear, 0);
 }
 
+// calculate how many batches have been loaded
 int get_current_batch(network net)
 {
     int batch_num = (*net.seen)/(net.batch*net.subdivisions);
@@ -611,6 +612,8 @@ void fill_network_boxes(network *net, int w, int h, float thresh, float hier, in
 	int j;
 	for (j = 0; j < net->n; ++j) {
 		layer l = net->layers[j];
+		// different operations depending on layer's type
+		// TODO, understanding concept of YOLO layer in paper, then continue this part
 		if (l.type == YOLO) {
 			int count = get_yolo_detections(l, w, h, net->w, net->h, thresh, map, relative, dets, letter);
 			dets += count;
@@ -634,7 +637,9 @@ void fill_network_boxes(network *net, int w, int h, float thresh, float hier, in
 
 detection *get_network_boxes(network *net, int w, int h, float thresh, float hier, int *map, int relative, int *num, int letter)
 {
+    // get detections
 	detection *dets = make_network_boxes(net, thresh, num);
+	//?
 	fill_network_boxes(net, w, h, thresh, hier, map, relative, dets, letter);
 	return dets;
 }

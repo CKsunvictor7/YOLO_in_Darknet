@@ -558,14 +558,14 @@ gpu4_exp11 = {
 }
 
 gpu7_exp14 = {
-    'Model_PATH': "/mnt2/model/exp14/exp14_8000.weights",
-    ".cfg": "exps/exp14.cfg",
-    ".data": "exps/exp14.data",
+    'Model_PATH': "/mnt2/model/exp14_2/exp14_2_7000.weights",
+    ".cfg": "exps/exp14_2.cfg",
+    ".data": "exps/exp14_2.data",
 
     'sample_dir':'',    # sample_dir or sample_txt, must be only one active
-    'sample_txt':'exps/train_val/exp14_train.txt',
+    'sample_txt':'exps/train_val/exp14_val.txt',
     'DETAIL':False,
-    'SAVE_IMG':True,
+    'SAVE_IMG':False,
     'SAVE_IMG_THRESHOLD':0.3,
     'overlapped_ratio_threshold':0.6,
     'SAVE_IMG_DIR':'/mnt2/results/exp14_vis',
@@ -576,7 +576,45 @@ gpu7_exp14 = {
     'SAVE_LABEL_THRESHOLD':0.5,
 }
 
-eval_config = gpu7_exp14
+gpu6_exp13 = {
+    'Model_PATH': "/mnt/UEC_backup_AB/UEC256_exp13_35000.weights",
+    ".cfg": "exps/UEC256_exp13.cfg",
+    ".data": "exps/UEC256_exp13.data",
+
+    'sample_dir':'/mnt/155', #'/mnt/155',    # sample_dir or sample_txt, must be only one active
+    'sample_txt':'', #'exps/train_val/exp13_val.txt',
+    'SAVE_DETECTION_THRESHOLD':0.2,
+    'SAVE_DETECTION_DIR':'/mnt/results/exp13_detection_155',
+    'DETAIL':False,
+    'SAVE_IMG':False,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'overlapped_ratio_threshold':0.6,
+    'SAVE_IMG_DIR':'/mnt/results/exp13_vis',
+    'SAVE_LABEL':False,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'-',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+gpu6_exp15 = {
+    'Model_PATH': "/mnt/exp15_backup/exp15_40000.weights",
+    ".cfg": "exps/exp15.cfg",
+    ".data": "exps/exp15.data",
+    'sample_dir':'/mnt/156', #'/mnt/155',    # sample_dir or sample_txt, must be only one active
+    'sample_txt':'', #'exps/train_val/exp13_val.txt',
+    'SAVE_DETECTION_THRESHOLD':0.2,
+    'SAVE_DETECTION_DIR':'/mnt/results/exp15_detection_156',
+    'DETAIL':False,
+    'SAVE_IMG':False,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'overlapped_ratio_threshold':0.6,
+    'SAVE_IMG_DIR':'-',
+    'SAVE_LABEL':False,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'-',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+
+eval_config = gpu6_exp15
 
 
 def overlapped_ratio(box1, box2):

@@ -71,7 +71,7 @@ def BBox_TO_YOLO(size, box):
     """
     convert bbox format to YOLO format
     :param size: size of img (w, h)
-    :param box: bounding box: (xmin, ymin, xmax, ymax)
+    :param box: bounding box: (xmin, xmax, ymin, ymax)
     :return: YOLO format
     """
     dw = 1. / float(size[0])
@@ -87,7 +87,7 @@ def BBox_TO_YOLO(size, box):
     return (x, y, w, h)
 
 
-def all_BBox_TO_YOLO(annotation_dir, img_dir, new_annotation_dir):
+def UEC_BBox_TO_YOLO(annotation_dir, img_dir, new_annotation_dir):
     """
     to convert all annotation file in annotation_dir to YOLO format,
     and write the annotation(same name) under new_annotation_dir
@@ -105,13 +105,13 @@ def all_BBox_TO_YOLO(annotation_dir, img_dir, new_annotation_dir):
                 for l in r.readlines():
                     pieces = l.rstrip().split(' ')
                     (x, y, w, h) = BBox_TO_YOLO(img.size, (
-                    float(pieces[1]), float(pieces[3]), float(pieces[2]), float(pieces[4])))
+                    float(pieces[1]), float(pieces[2]), float(pieces[3]), float(pieces[4])))
 
                     if x < 0 or x > 1 or y < 0 or y > 1 or w < 0 or w > 1 or h < 0 or h > 1:
                         print('error, range overflow @{} {} {} {} {}\n'.format(f, x, y, w, h))
 
                     # print('{} {} {} {} {}'.format(pieces[0], x, y, w, h))
-                    with open(os.path.join(new_annotation_dir, f), 'w') as writer:
+                    with open(os.path.join(new_annotation_dir, f), 'a') as writer:
                         # int(pieces[0])-1: to map UEC256(1,N) -> YOLO(0,N-1)
                         writer.write('{} {} {} {} {}\n'.format(int(pieces[0])-1, x, y, w, h))
         except:
@@ -121,10 +121,14 @@ def all_BBox_TO_YOLO(annotation_dir, img_dir, new_annotation_dir):
 
 
 def renamer():
-    dir = '/mnt/azure_singapore_data_staging/UEC256_annotations_YOLO'
+    dir = '/Users/fincep004/Desktop/OneDrive - FiNC Co.Ltd/Annotations/finc-food-furuta/annotations_v2/annotations_chukadon'
+    #dir = '/Users/fincep004/Desktop/web_food_imgs/bowl_of_rice_and_fried_fish'
+    #dir = '/Users/fincep004/Desktop/web_food_imgs_f/chukadon/2'
     for f in os.listdir(dir):
         #shutil.move(os.path.join(dir, f), os.path.join(dir, f + '.txt'))
-        print(os.path.join(dir, f + '.txt'))
+        new_name = f.replace("chukadon", "chuka_don")
+        print(new_name)
+        shutil.move(os.path.join(dir, f), os.path.join(dir, new_name))
 
 
 def file_mover(src_dir, dst_dir):
@@ -152,23 +156,43 @@ def same_img(p1, p2):
 
 def YOLODB_check(train_list):
     """
-    check whether this DB is good to train
-    1. check the DB followed by the path rules of YOLO Darknet
+    check whether this DB is good to train by the logic of how YOLO read training data
+    1. check the if image file exists or not
     2. check there is one annotation file for each image file in train/val list
+       by the path rules of YOLO Darknet
+    3. YOLO annotation format check: length & is float
 
     print the bad paths
     """
+    count = 0
     with open(train_list, 'r') as r:
         for l in r.readlines():
-            anno_path = l.rstrip() #.replace( 'images', 'labels')
-            anno_path = str.replace(anno_path, '.jpg', '.txt')
-            anno_path = str.replace(anno_path, '.JPG', '.txt')
-            anno_path = str.replace(anno_path, '.png', '.txt')
-            anno_path = str.replace(anno_path, '.JPGE', '.txt')
+            # check anno
+            img_path = l.rstrip() #.replace( 'images', 'labels')
+
+            if not os.path.exists(img_path):
+                print('error, this img is missed: ', img_path)
+
+            anno_path = str.replace(img_path, '.jpg', '.txt')
+            #anno_path = str.replace(anno_path, '.JPG', '.txt')
+            #anno_path = str.replace(anno_path, '.png', '.txt')
+            #anno_path = str.replace(anno_path, '.JPEG', '.txt')
             if os.path.exists(anno_path):
+                with open(anno_path, 'r') as r:
+                    for line in  r.readlines():
+                        piece = line.rstrip().split(' ')
+                        assert len(piece) == 5, 'error, too many or less anno @{}'.format(anno_path)
+                        for p in piece:
+                            try:
+                                float(p)
+                            except:
+                                print('error, not digital @{} and {}'.format(anno_path, p))
+                count += 1
                 continue
             else:
-                print('this anno is missed: ', anno_path)
+                print('error, this anno is missed: ', anno_path)
+    print('check {} annotations completed'.format(count))
+
 
 
 def DB_info_id_version(anno_dir):
@@ -193,14 +217,17 @@ def DB_info_id_version(anno_dir):
     print('total {} categories'.format(len(category_dict)))
 
 
-def DB_info_name_version(anno_dir):
+def DB_info_name_version(anno_dirs):
     """
     show the info of anno_dir
+    :param anno_dirs: a list of annotations []
     return anno_dict{'category name':nb}
     """
+    anno_list = []
+    for src_dir in anno_dirs:
+        anno_list += get_file_list(src_dir, extensions=('txt'))
+    #anno_list = get_file_list(anno_dir, extensions=('txt'))
     anno_dict = {}
-    anno_list = get_file_list(anno_dir, extensions=('txt'))
-
     for f in anno_list:
         with open(f, 'r') as r:
             for line in r.readlines():
@@ -236,6 +263,11 @@ def id_to_name_conversion(src_dir, dst_dir):
             with open(dst_path, 'w') as w:
                 for line in r.readlines():
                     pieces = line.rstrip().split(' ')
+
+                    if len(pieces) < 5:
+                        print('sth wrong @', f)
+                        break
+
                     # notice: label range start from 0 or 1
                     matching_name = table[table['label'] == (int(pieces[0]))]['level3_en'].values[0]
                     #print(matching_name)
@@ -498,27 +530,127 @@ def id_to_name_conversion_for_intern_UEC(src_dir, dst_dir):
     print('empty_count = ', empty_count)
 
 
+def v3_JP_to_EN_conversion(src_dir, dst_dir):
+    DEBUG = True
+
+    table = pd.read_csv('labelsheet_v3.csv', encoding='utf-8')
+    anno_list = get_file_list(src_dir, extensions=('.txt'))
+
+    try:
+        anno_list.remove(os.path.join(src_dir, 'classes.txt'))
+    except:
+        print('no classes to remove')
+
+    print('nb of data = ', len(anno_list))
+    for f in anno_list:
+        if DEBUG: print(f)
+        dst_path = os.path.join(dst_dir, os.path.basename(f))
+        with open(f, 'r') as r:
+            with open(dst_path, 'w') as w:
+                for line in r.readlines():
+                    pieces = line.rstrip().split(' ')
+
+                    # break if empty line
+                    if len(pieces) < 2:
+                        print('sth wrong @', line)
+                        print('@', f)
+                        break
+                    if DEBUG: print(pieces[0])
+
+                    matching_name = table[table['JP_name'] == pieces[0]]['En_name'].values[0]
+                    # print(matching_name)
+                    if str(matching_name) == 'nan':
+                        print('sth wrong @'.format(f))
+                    else:
+                        w.write('{} {} {} {} {}\n'.format(matching_name, pieces[1],
+                                                      pieces[2], pieces[3],
+                                                      pieces[4]))
+    print('conversion done')
+
+
+def finc_v0_conversion(src, dst, img_dir):
+    """
+    1. convert coordinate to yolo format
+    2. id -1 to start from 0
+    """
+    annotation_list = get_file_list(src, extensions=('.txt'))
+    for f in annotation_list:
+
+        # !! notice the format of image
+        img = Image.open(os.path.join(img_dir, os.path.splitext(os.path.basename(f))[0] + '.png'))
+        try:
+            with open(f, 'r') as r:
+                for l in r.readlines():
+                    pieces = l.rstrip().split(' ')
+                    (x, y, w, h) = BBox_TO_YOLO(img.size, (
+                    float(pieces[1]), float(pieces[3]), float(pieces[2]), float(pieces[4])))
+
+                    if x < 0 or x > 1 or y < 0 or y > 1 or w < 0 or w > 1 or h < 0 or h > 1:
+                        print('error, range overflow @{} {} {} {} {}\n'.format(f, x, y, w, h))
+
+                    # print('{} {} {} {} {}'.format(pieces[0], x, y, w, h))
+                    with open(os.path.join(dst, os.path.basename(f)), 'a') as writer:
+                        # int(pieces[0])-1: to map UEC256(1,N) -> YOLO(0,N-1)
+                        writer.write('{} {} {} {} {}\n'.format(int(pieces[0])-1, x, y, w, h))
+        except:
+            print('sth wrong @', f)
+
+    print('convert successfully')
+
+
+
+
 def category_name_checker(name):
     assert len(name.rstrip().split(' ')) == 1, \
         'error@ {}, category should not have blank'.format(name.rstrip())
 
 
+def Img_info():
+    print('')
+
+
+
+
+
+
 def main():
+    DB_info_name_version(['/mnt/UEC256_annotations_YOLO_v3_c', '/mnt/155_v3', '/mnt/web_imgs_annotations_v3'])
+    exit()
+    YOLODB_check('exps/train_val/exp15_train.txt')
+    YOLODB_check('exps/train_val/exp15_val.txt')
+    #DB_info_name_version('exps/train_val/exp15_train.txt')
+    exit()
+
+    for dir in os.listdir('/Users/fincep004/Desktop/OneDrive - FiNC Co.Ltd/Annotations/finc-food-furuta/annotations_v2/'):
+        src_path = os.path.join('/Users/fincep004/Desktop/OneDrive - FiNC Co.Ltd/Annotations/finc-food-furuta/annotations_v2/', dir)
+        if os.path.isdir(src_path):
+            id_to_name_conversion(src_path,
+            '/Users/fincep004/Desktop/OneDrive - FiNC Co.Ltd/Annotations/finc-food-furuta/annotations_v3')
+    exit()
+    id_to_name_conversion('/Users/fincep004/Desktop/OneDrive - FiNC Co.Ltd/Annotations/finc-food-sasaki/155_v2',
+                          '/Users/fincep004/Desktop/OneDrive - FiNC Co.Ltd/Annotations/finc-food-sasaki/155_v3')
+    exit()
+    id_to_name_conversion_for_intern_UEC(
+        '/Users/fincep004/Documents/UEC256_annotations_YOLO_v2_c',
+        '/Users/fincep004/Documents/UEC256_annotations_YOLO_v3_c')
+    exit()
+
+    v3_JP_to_EN_conversion('/Users/fincep004/Desktop/finc_food_db/annotations_157','/Users/fincep004/Desktop/finc_food_db/annotations_157_en')
+    exit()
+
     # step 0. convert id format(v2) to name format (v3)
 
 
     #DB_info_name_version('/mnt2/DB/finc_data/155_v3')
     #exit()
 
-    #id_to_name_conversion('/Users/fincep004/Desktop/OneDrive - FiNC Co.Ltd/Annotations/finc-food-sasaki/155_v2',
-    #                      '/Users/fincep004/Desktop/OneDrive - FiNC Co.Ltd/Annotations/finc-food-sasaki/155_v3')
+
     #DB_info_name_version('/Users/fincep004/Desktop/OneDrive - FiNC Co.Ltd/Annotations/finc-food-sasaki/155_v3')
 
     #id_to_name_conversion_for_intern_UEC('/mnt/UEC256_annotations_YOLO_v2_c',
     #                                     '/mnt/UEC256_annotations_YOLO_v3_c')
 
-    id_to_name_conversion_for_intern_UEC('/Users/fincep004/Documents/UEC256_annotations_YOLO_v2_c',
-                                         '/Users/fincep004/Documents/UEC256_annotations_YOLO_v3_c')
+
 
     #DB_info_name_version('/mnt/UEC256_annotations_YOLO_v3_c')
     """
@@ -536,3 +668,30 @@ def main():
 if __name__ == '__main__':
     main()
 
+"""
+difficulty list of web_img
+/Users/fincep004/Desktop/finc_food_db/web_imgs/almond_junket_10.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/almond_junket_104.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/almond_junket_164.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/almond_junket_187.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/almond_junket_197.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/almond_junket_253.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/almond_junket_83.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/anpan_232.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/apple_122.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/apple_149.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/apple_187.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/apple_264.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/apple_321.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/apple_91.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/avocado_and_raw_vegetable_salad_112.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/avocado_and_raw_vegetable_salad_17.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/avocado_and_raw_vegetable_salad_174.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/avocado_and_raw_vegetable_salad_180.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/avocado_and_raw_vegetable_salad_340.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/avocado_and_raw_vegetable_salad_39.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/banana_116.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/banana_161.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/banana_275.jpg
+/Users/fincep004/Desktop/finc_food_db/web_imgs/beans_and_vegetable_salad_164.jpg
+"""

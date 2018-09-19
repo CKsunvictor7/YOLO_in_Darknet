@@ -587,9 +587,9 @@ void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float
 	int i = 0;
 	int t;
 
-	const float thresh = .005;
-	const float nms = .45;
-	const float iou_thresh = 0.5;
+	const float thresh = .005;  // ?
+	const float nms = .45;    // IOU threshold for nms
+	const float iou_thresh = 0.5;  // ?
 
 	int nthreads = 4;
 	image *val = calloc(nthreads, sizeof(image));
@@ -609,6 +609,12 @@ void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float
 	float avg_iou = 0;
 	int tp_for_thresh = 0;
 	int fp_for_thresh = 0;
+
+	//TODO for advanced metric
+	//float thresh_calc_avg_iou_array[];
+	//float avg_iou_array[];
+	//int tp_for_thresh_array[];
+	//int fp_for_thresh[];
 
 	box_prob *detections = calloc(1, sizeof(box_prob));
 	int detections_count = 0;
@@ -846,6 +852,7 @@ void validate_detector_map(char *datacfg, char *cfgfile, char *weightfile, float
 
 			avg_precision += cur_precision;
 		}
+		// why 11?
 		avg_precision = avg_precision / 11;
 		printf("class_id = %d, name = %s, \t ap = %2.2f %% \n", i, names[i], avg_precision*100);
 		mean_average_precision += avg_precision;

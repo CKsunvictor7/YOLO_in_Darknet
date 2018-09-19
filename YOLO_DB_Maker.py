@@ -1,21 +1,30 @@
 """
-TO build a YOLO DB
-Input:
+TO build a YOLO DB:
+Prepare data
+->read the src annotation files
+-> decide the categories of the DB,
+-> output the annotations and train/val txt
+
+
+Preparation:
 1) labelsheet_v3.csv: the category file with col 'EN_name', 'JP_name', 'parent', 'merge', 'country'
-2) an source anno DB which stored in the format: name x y w h
+2) 'IMG_DIR': the folder contains all images
+3) 'src_anno_dir': list of annotations in the format: name x y w h
+4) 'dst_anno_dir': destination of new annotations
 
 Steps: @main()
 
 Output:
-1) category list@category.names -> should change to the task_name.names
-2) an annotation DB with training category list,
-3) training, validation file list
+1) category list stored at 'category.names_path'
+2) annotations stored in 'dst_anno_dir'
+3) training, validation file list@'src_anno_dir' & dst_anno_dir'
 """
 import os
 import shutil
 from PIL import Image
 from YOLODB_tools import get_file_list, DB_info_name_version, split_by_KFold, \
-    id_to_name_conversion, id_to_name_conversion_for_intern_UEC, DB_info_id_version
+    id_to_name_conversion, id_to_name_conversion_for_intern_UEC, DB_info_id_version, \
+    YOLODB_check
 import numpy as np
 import operator
 import pandas as pd
@@ -27,25 +36,58 @@ local = {
     'IMG_DIR':''
 }
 
-gpu6 = {
-    'src_anno_dir':'/mnt/UEC256_annotations_YOLO_v3_c', #UEC256_annotations_YOLO_v3_c
-    'dst_anno_dir':"/mnt/UEC256_labels_exp", #UEC256_labels_exp
-    'IMG_DIR':'/mnt/UEC256_images/'
-}
-
 gpu7 = {
     'src_anno_dir':'/mnt2/DB/finc_data/155_v3',
     'dst_anno_dir':"/mnt2/DB/finc_data/exp_labels_tmp",
     'IMG_DIR':'/mnt2/DB/finc_data/155'
 }
 
-server = gpu6
+gpu6_exp0 = {
+    'dst_anno_dir':"/mnt/finc_db_v0_annotations_yolo",
+    'IMG_DIR':'/mnt/finc_food_db_v0'
+}
+
+gpu8_exp0 = {
+    'dst_anno_dir':"/mnt2/DB/finc_db_v0_annotations_yolo",
+    'IMG_DIR':'/mnt2/DB/finc_food_db_v0'
+}
+
+gpu6_exp13 = {
+    'src_anno_dir':['/mnt/UEC256_annotations_YOLO_v3_c'], #UEC256_annotations_YOLO_v3_c
+    'dst_anno_dir':"/mnt/UEC256_labels_exp/", #UEC256_labels_exp
+    'IMG_DIR':'/mnt/UEC256_images/'
+}
+
+gpu6_exp15 = {
+    'src_anno_dir':['/mnt/UEC256_annotations_YOLO_v3_c', '/mnt/155_v3', '/mnt/web_imgs_annotations_v3'], #UEC256_annotations_YOLO_v3_c
+    'dst_anno_dir':"/mnt/exp15_annos/", #UEC256_labels_exp
+    'IMG_DIR':'/mnt/exp15_db/'
+}
+
+gpu6_exp16 = {
+    'src_anno_dir':['/mnt/UEC256_annotations_YOLO_v3_c', '/mnt/155_v3', '/mnt/web_imgs_annotations_v3'], #UEC256_annotations_YOLO_v3_c
+    'dst_anno_dir':"/mnt/exp16_annos/", #UEC256_labels_exp
+    'IMG_DIR':'/mnt/m_db/'
+}
+
+gpu6_exp16_new = {
+    'src_anno_dir':['/mnt/UEC256_annotations_YOLO_v3_c', '/mnt/155_v3', '/mnt/web_imgs_annotations_v3'], #UEC256_annotations_YOLO_v3_c
+    'dst_anno_dir':"/mnt/exp16_annos/", #UEC256_labels_exp
+    'IMG_DIR':'/mnt/m_db/',
+    'category.names_path':'exps/exp16.names',
+    'training_list_path':'exps/train_val/exp16_train.txt',
+    'val_list_path':'exps/train_val/exp16_val.txt',
+}
+
+
+server = gpu6_exp16_new
+
 
 # skip if the nb of category is less than Min_num_list
-Min_num_list = 95
+Min_num_list = 50
 DO_MERGE = True
 skip_country_list = ['southeast_asia', 'Chinese', 'Hawaii', 'Korea', 'Taiwan']
-skip_list = ['unknown_food', 'skip']
+skip_list = ['nonfood',  'skip']
 
 
 
@@ -55,7 +97,7 @@ table.dropna(how='all', inplace=True)
 table.reset_index(drop=True, inplace=True)
 
 
-def decide_category(src_anno_dir):
+def decide_category():
     """
     make category list by 'merge' or 'country'
     and store as 'exps/category.names'
@@ -63,9 +105,13 @@ def decide_category(src_anno_dir):
     input: dict: {k(category_name):nb}
     :return: list of category
     """
-    anno_dict = {}
-    anno_list = get_file_list(src_anno_dir, extensions=('txt'))
 
+    anno_list = []
+    for src_dir in server['src_anno_dir']:
+        anno_list += get_file_list(src_dir, extensions=('txt'))
+
+    # recording the category:nb of bboxes
+    anno_dict = {}
     for f in anno_list:
         with open(f, 'r') as r:
             for line in r.readlines():
@@ -80,13 +126,23 @@ def decide_category(src_anno_dir):
 
                 # country filter
                 if skip_country_list:
-                    country = table[table['En_name'] == food]['country'].values[0]
+                    try:
+                        country = table[table['En_name'] == food]['country'].values[0]
+                    except:
+                        print('[country]error @', f)
+                        print('[country]error @', line)
+                        exit()
                     if str(country) != 'nan' and country in skip_country_list:
                         continue
 
                 # do merge
                 if DO_MERGE:
-                    new_name = table[table['En_name'] == food]['merge'].values[0]
+                    try:
+                        new_name = table[table['En_name'] == food]['merge'].values[0]
+                    except:
+                        print('[merge]error @', f)
+                        print('[merge]error @', line)
+                        exit()
                     if str(new_name) != 'nan':
                         # TODO: more pythonic
                         if new_name not in anno_dict:
@@ -118,7 +174,7 @@ def decide_category(src_anno_dir):
 
     print('nb of new categories = ', len(category_list))
 
-    with open('exps/category.names', 'w') as w:
+    with open(server['category.names_path'], 'w') as w:
         for c in category_list:
             w.write('{}\n'.format(c))
 
@@ -132,15 +188,23 @@ def make_YOLO_DB(src_anno_dir, dst_anno_dir, category_list):
     according to category_list, which is generated by Make_category, a list contains category in this task
     :return:
     """
-    anno_list = get_file_list(src_anno_dir, extensions=('.txt'))
+    anno_list = []
+    for src_dir in server['src_anno_dir']:
+        anno_list += get_file_list(src_dir, extensions=('txt'))
 
     c = 0
     for f in anno_list:
         desired_annos = []
         #print(f)
         with open(f) as r:
-            for l in r.readlines():
-                pieces = l.rstrip().split(' ')
+            for line in r.readlines():
+                pieces = line.rstrip().split(' ')
+
+                if len(pieces) < 2:
+                    print('sth wrong @', line)
+                    print('@', f)
+                    break
+
                 # category
                 v3_name = pieces[0].rstrip()
                 #print('v3_name@',v3_name)
@@ -170,7 +234,7 @@ def make_YOLO_DB(src_anno_dir, dst_anno_dir, category_list):
             with open(os.path.join(dst_anno_dir, os.path.basename(f)), 'w') as w:
                 for a in desired_annos:
                     #print(a)
-                    w.write(a)
+                    w.write('{}\n'.format(a))
     print('nb of DB =', c)
 
 
@@ -184,28 +248,38 @@ def make_train_val_list(dst_anno_dir):
     print(len(train_list))
     print(len(val_list))
 
-    with open('exps/train_val/train_list.txt', 'w') as w:
+    c = 0
+    with open(server['training_list_path'], 'w') as w:
         for f in train_list:
             id = os.path.splitext(os.path.basename(f))[0]
-            w.write('{}\n'.format(os.path.join(server['IMG_DIR'], id + '.jpg')))
+            # TODO: test for other types image
+            img_path = os.path.join(server['IMG_DIR'], id + '.jpg')
+            if os.path.exists(img_path):
+                w.write('{}\n'.format(img_path))
+                c += 1
+            else:
+                print('{} does not exist, skip'.format(img_path))
+    print('finally, {} training data'.format(c))
 
-    with open('exps/train_val/val_list.txt', 'w') as w:
+    c = 0
+    with open(server['val_list_path'], 'w') as w:
         for f in val_list:
             id = os.path.splitext(os.path.basename(f))[0]
-            w.write('{}\n'.format(os.path.join(server['IMG_DIR'], id + '.jpg')))
+            # TODO: test for other types image
+            img_path = os.path.join(server['IMG_DIR'], id + '.jpg')
+            if os.path.exists(img_path):
+                w.write('{}\n'.format(img_path))
+                c += 1
+            else:
+                print('{} does not exist, skip'.format(img_path))
+    print('finally, {} val data'.format(c))
     # !! after created, cp all files of UEC256_labels_exp to UEC256_images
 
 
 def maker():
-    # step0. check the DB info of src_anno_dir and get anno_dict
-    # id_to_name_conversion_for_intern_UEC('/Users/fincep004/Documents/UEC256_annotations_YOLO_v2_c/',
-    #                      '/Users/fincep004/Documents/UEC256_annotations_YOLO_v2_name_c/')
-    # exit()
-
     # step1. check the DB info of src_anno_dir and get anno_dict
     # & decide new category list for new task
-    new_category_list = decide_category(server['src_anno_dir'])
-    # DB_info_id_version(server['dst_anno_dir'])
+    new_category_list = decide_category()
 
     # step2. make new anno DB by converting name of src_anno_dir -> label(num)
     make_YOLO_DB(server['src_anno_dir'], server['dst_anno_dir'],
@@ -214,11 +288,17 @@ def maker():
     # step3. based on dst_anno_dir to build DB
     make_train_val_list(server['dst_anno_dir'])
 
-    # step4. check the DB by 1)DB_info_name_version
-    # & 2)downloading & labelImg tool to check
-    # DB_info_name_version(server['dst_anno_dir'])
+    """
+    step4. check the category.names＠'category.names_path' 
+    step5. check training / val txt 
+    """
+    exit()
 
-    # step5. for YOLOv3@darknet,  copy *.txt to IMG_DIR
+    # step6. check the DB by YOLODB_check
+    YOLODB_check(server['training_list_path'])
+    YOLODB_check(server['val_list_path'])
+
+    # step7. download & use labelImg tool to check
 
 
 def make_food_only_DB(src_anno_dir, dst_anno_dir):
@@ -230,18 +310,23 @@ def make_food_only_DB(src_anno_dir, dst_anno_dir):
                 for l in r.readlines():
                     pieces = l.rstrip().split(' ')
                     if pieces[0] == 'nonfood':
-                        w.write('{} {} {} {} {}\n'.format(0, pieces[1], pieces[2],pieces[3], pieces[4]))
-                        print('nonfood')
+                        #w.write('{} {} {} {} {}\n'.format(0, pieces[1], pieces[2],pieces[3], pieces[4]))
+                        print('nonfood, skip')
                     else:
-                        w.write('{} {} {} {} {}\n'.format(1, pieces[1], pieces[2], pieces[3], pieces[4]))
+                        w.write('{} {} {} {} {}\n'.format(0, pieces[1], pieces[2], pieces[3], pieces[4]))
 
 
 def food_nonfood_maker():
     make_food_only_DB(server['src_anno_dir'], server['dst_anno_dir'])
 
 
+def finc_v0_maker():
+    make_train_val_list(server['dst_anno_dir'])
+
+
 def main():
     maker()
+    #finc_v0_maker()
 
 
 
