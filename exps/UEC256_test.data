@@ -1,5 +1,0 @@
-classes= 100
-train  = /mnt/UEC256_train_test.txt
-valid  = /mnt/UEC256_val_test.txt
-names = /mnt2/dc_projects/AI_DC_YOLO_AB/exps/UEC256_test.names
-backup = /mnt/UEC_backup_exp7/

@@ -1,5 +1,5 @@
 classes= 256
 train  = /mnt/UEC256_train.txt
 valid  = /mnt/UEC256_val.txt
-names = exps/UEC256.names
+names = /mnt2/dc_projects/AI_DC_YOLO_AB/exps/UEC256.names
 backup = /mnt/UEC_backup_AB/
