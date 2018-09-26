@@ -1,6 +1,11 @@
 #!python3
 """
-based on
+based on darkent.py
+
+run Yolo models on images, and
+1). SAVE_DETECTION: save results in: class_name confidence x y w h
+2) (optional) SAVE_LABEL: save results in: class_name x y w h
+* x, y, w, h are not ratio but the real size
 
 """
 """
@@ -39,6 +44,106 @@ import shutil
 import cv2
 import time
 from PIL import Image, ImageDraw, ImageFont
+
+
+
+gpu6_exp11 = {
+    'Model_PATH':"/mnt/YOLO_AB_weights/UEC256_exp11_25000.weights",
+    ".cfg":"exps/UEC256_exp11.cfg",
+    ".data":"exps/UEC256_exp11.data",
+
+}
+
+eval_finc_config = {
+    "sample_dir":'/mnt/finc_data/155',
+    'DETAIL':False,      # whether print details
+    'SAVE_IMG':True,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'SAVE_IMG_DIR':'/mnt/results/exp11_vis_155',
+    'SAVE_DETECTION_DIR':'/mnt/results/exp11_detection_155',
+    'SAVE_DETECTION_THRESHOLD':0.1,
+    'SAVE_LABEL':True,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'/mnt/results/exp11_155',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+eval_UEC_config = {
+    'sample_dir':'',
+    'DETAIL':False,
+    'SAVE_IMG':True,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'SAVE_IMG_DIR':'/mnt/UEC_results/exp11_vis',
+    'SAVE_DETECTION_DIR':'/mnt/UEC_results/exp11_detection',
+    'SAVE_DETECTION_THRESHOLD':0.1,
+    'SAVE_LABEL':True,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'/mnt/UEC_results/exp11',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+gpu4_exp11 = {
+    'Model_PATH':"/mnt2/models/yolov3/UEC256_exp12_25000.weights",
+    ".cfg":"exps/UEC256_exp12.cfg",
+    ".data":"exps/UEC_exp12.data",
+    "sample_dir":"/mnt2/DB/samples/"
+}
+
+gpu7_exp14 = {
+    'Model_PATH': "/mnt2/model/exp14_2/exp14_2_7000.weights",
+    ".cfg": "exps/exp14_2.cfg",
+    ".data": "exps/exp14_2.data",
+
+    'sample_dir':'',    # sample_dir or sample_txt, must be only one active
+    'sample_txt':'exps/train_val/exp14_val.txt',
+    'DETAIL':False,
+    'SAVE_IMG':False,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'overlapped_ratio_threshold':0.6,
+    'SAVE_IMG_DIR':'/mnt2/results/exp14_vis',
+    'SAVE_DETECTION_DIR':'/mnt2/results/exp14_detections',
+    'SAVE_DETECTION_THRESHOLD':0.1,
+    'SAVE_LABEL':False,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'-',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+gpu6_exp13 = {
+    'Model_PATH': "/mnt/UEC_backup_AB/UEC256_exp13_35000.weights",
+    ".cfg": "exps/UEC256_exp13.cfg",
+    ".data": "exps/UEC256_exp13.data",
+
+    'sample_dir':'/mnt/155', #'/mnt/155',    # sample_dir or sample_txt, must be only one active
+    'sample_txt':'', #'exps/train_val/exp13_val.txt',
+    'SAVE_DETECTION_THRESHOLD':0.2,
+    'SAVE_DETECTION_DIR':'/mnt/results/exp13_detection_155',
+    'DETAIL':False,
+    'SAVE_IMG':False,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'overlapped_ratio_threshold':0.6,
+    'SAVE_IMG_DIR':'/mnt/results/exp13_vis',
+    'SAVE_LABEL':False,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'-',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+gpu6_exp15 = {
+    'Model_PATH': "/mnt/exp15_backup/exp15_40000.weights",
+    ".cfg": "exps/exp15.cfg",
+    ".data": "exps/exp15.data",
+    'sample_dir':'/mnt/156', #'/mnt/155',    # sample_dir or sample_txt, must be only one active
+    'sample_txt':'', #'exps/train_val/exp13_val.txt',
+    'SAVE_DETECTION_THRESHOLD':0.2,
+    'SAVE_DETECTION_DIR':'/mnt/results/exp15_detection_156',
+    'DETAIL':False,
+    'SAVE_IMG':False,
+    'SAVE_IMG_THRESHOLD':0.3,
+    'overlapped_ratio_threshold':0.6,
+    'SAVE_IMG_DIR':'-',
+    'SAVE_LABEL':False,   # whether output initial info for labeling
+    'SAVE_LABEL_DIR':'-',
+    'SAVE_LABEL_THRESHOLD':0.5,
+}
+
+eval_config = gpu6_exp15
 
 
 def sample(probs):
@@ -425,129 +530,7 @@ def performDetect(image_list, thresh= 0.25, configPath = "./cfg/yolov3.cfg", wei
                         ww.write('{} {} {} {} {} \n'.format(
                             rect[0], rect[2][0], rect[2][1], rect[2][2], rect[2][3]))
 
-                # TODO: drawing function
-                """
-                # only draw rect with larger than 0.5
-                if eval_config['SAVE_IMG'] and rect[1] > eval_config['SAVE_IMG_THRESHOLD']:
-                    left_up_corner, right_bottm_corner = corner_calculater((rect[2][0], rect[2][1], rect[2][2], rect[2][3]),
-                                                                           (img.shape[0], img.shape[1]))
-                    # print(left_up_corner)
-                    # print(right_bottm_corner)
-                    # image, up-left, bottom-right, color code, thickness ,
-                    cv2.rectangle(img, left_up_corner, right_bottm_corner, (0, 255, 0), 4)
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    text = '{}:{:0.2f}'.format(rect[0], float(rect[1]))
-                    # img, text to add/ left_up_corner/ font, font size, color, thickness
-                    # due to sometimes left_up_corner's location is bad for Text,
-                    # put Text in the middle of bbox
-                    tect_location = (left_up_corner[0],
-                                     int((left_up_corner[1]+right_bottm_corner[1])/2))
-                    cv2.putText(img, text, tect_location, font, 1, (0, 0, 0), 2)
-                    cv2.imwrite(os.path.join(eval_config['SAVE_IMG_DIR'], os.path.basename(imagePath)), img)
-                """
     return None
-
-
-gpu6_exp11 = {
-    'Model_PATH':"/mnt/YOLO_AB_weights/UEC256_exp11_25000.weights",
-    ".cfg":"exps/UEC256_exp11.cfg",
-    ".data":"exps/UEC256_exp11.data",
-
-}
-
-eval_finc_config = {
-    "sample_dir":'/mnt/finc_data/155',
-    'DETAIL':False,      # whether print details
-    'SAVE_IMG':True,
-    'SAVE_IMG_THRESHOLD':0.3,
-    'SAVE_IMG_DIR':'/mnt/results/exp11_vis_155',
-    'SAVE_DETECTION_DIR':'/mnt/results/exp11_detection_155',
-    'SAVE_DETECTION_THRESHOLD':0.1,
-    'SAVE_LABEL':True,   # whether output initial info for labeling
-    'SAVE_LABEL_DIR':'/mnt/results/exp11_155',
-    'SAVE_LABEL_THRESHOLD':0.5,
-}
-
-eval_UEC_config = {
-    'sample_dir':'',
-    'DETAIL':False,
-    'SAVE_IMG':True,
-    'SAVE_IMG_THRESHOLD':0.3,
-    'SAVE_IMG_DIR':'/mnt/UEC_results/exp11_vis',
-    'SAVE_DETECTION_DIR':'/mnt/UEC_results/exp11_detection',
-    'SAVE_DETECTION_THRESHOLD':0.1,
-    'SAVE_LABEL':True,   # whether output initial info for labeling
-    'SAVE_LABEL_DIR':'/mnt/UEC_results/exp11',
-    'SAVE_LABEL_THRESHOLD':0.5,
-}
-
-
-
-gpu4_exp11 = {
-    'Model_PATH':"/mnt2/models/yolov3/UEC256_exp12_25000.weights",
-    ".cfg":"exps/UEC256_exp12.cfg",
-    ".data":"exps/UEC_exp12.data",
-    "sample_dir":"/mnt2/DB/samples/"
-}
-
-gpu7_exp14 = {
-    'Model_PATH': "/mnt2/model/exp14_2/exp14_2_7000.weights",
-    ".cfg": "exps/exp14_2.cfg",
-    ".data": "exps/exp14_2.data",
-
-    'sample_dir':'',    # sample_dir or sample_txt, must be only one active
-    'sample_txt':'exps/train_val/exp14_val.txt',
-    'DETAIL':False,
-    'SAVE_IMG':False,
-    'SAVE_IMG_THRESHOLD':0.3,
-    'overlapped_ratio_threshold':0.6,
-    'SAVE_IMG_DIR':'/mnt2/results/exp14_vis',
-    'SAVE_DETECTION_DIR':'/mnt2/results/exp14_detections',
-    'SAVE_DETECTION_THRESHOLD':0.1,
-    'SAVE_LABEL':False,   # whether output initial info for labeling
-    'SAVE_LABEL_DIR':'-',
-    'SAVE_LABEL_THRESHOLD':0.5,
-}
-
-gpu6_exp13 = {
-    'Model_PATH': "/mnt/UEC_backup_AB/UEC256_exp13_35000.weights",
-    ".cfg": "exps/UEC256_exp13.cfg",
-    ".data": "exps/UEC256_exp13.data",
-
-    'sample_dir':'/mnt/155', #'/mnt/155',    # sample_dir or sample_txt, must be only one active
-    'sample_txt':'', #'exps/train_val/exp13_val.txt',
-    'SAVE_DETECTION_THRESHOLD':0.2,
-    'SAVE_DETECTION_DIR':'/mnt/results/exp13_detection_155',
-    'DETAIL':False,
-    'SAVE_IMG':False,
-    'SAVE_IMG_THRESHOLD':0.3,
-    'overlapped_ratio_threshold':0.6,
-    'SAVE_IMG_DIR':'/mnt/results/exp13_vis',
-    'SAVE_LABEL':False,   # whether output initial info for labeling
-    'SAVE_LABEL_DIR':'-',
-    'SAVE_LABEL_THRESHOLD':0.5,
-}
-
-gpu6_exp15 = {
-    'Model_PATH': "/mnt/exp15_backup/exp15_40000.weights",
-    ".cfg": "exps/exp15.cfg",
-    ".data": "exps/exp15.data",
-    'sample_dir':'/mnt/156', #'/mnt/155',    # sample_dir or sample_txt, must be only one active
-    'sample_txt':'', #'exps/train_val/exp13_val.txt',
-    'SAVE_DETECTION_THRESHOLD':0.2,
-    'SAVE_DETECTION_DIR':'/mnt/results/exp15_detection_156',
-    'DETAIL':False,
-    'SAVE_IMG':False,
-    'SAVE_IMG_THRESHOLD':0.3,
-    'overlapped_ratio_threshold':0.6,
-    'SAVE_IMG_DIR':'-',
-    'SAVE_LABEL':False,   # whether output initial info for labeling
-    'SAVE_LABEL_DIR':'-',
-    'SAVE_LABEL_THRESHOLD':0.5,
-}
-
-
-eval_config = gpu6_exp15
 
 
 def overlapped_ratio(box1, box2):
@@ -598,19 +581,18 @@ def draw_bbox(img, filename, bboxes):
             font_color = (0, 0, 0)
 
         xSize, ySize = img.size
+
+        # this draw
         # ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeMono.ttf", 28, encoding="unic")
         fnt = ImageFont.truetype(font="/System/Library/Fonts/SFNSText.ttf", size=min(xSize, ySize) // 10)
 
         drawimg = ImageDraw.Draw(img)
         drawimg.rectangle((LU_corner, RD_corner),fill=None,outline=rect_color)
         drawimg.text(LU_corner, box[0], fill=font_color, font = fnt)
-    #img.show()
     img.save(filename)
 
 
 def main():
-    #server = gpu7_exp14
-
     # 2 input method
     # 1). listdir
     if eval_config['sample_dir']:
