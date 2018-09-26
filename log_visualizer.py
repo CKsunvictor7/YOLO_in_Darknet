@@ -42,15 +42,6 @@ def draw_training_log():
 
     #plt.xticks(my_x_ticks)
     plt.yticks(my_y_ticks)
-    """
-    ax = fig.add_subplot(1, 1, 1)
-    ax.plot(avg_loss, label='avg_loss')
-    ax.legend(loc='best')
-    ax.set_title('The loss curves')
-    ax.set_xlabel('images')
-    my_y_ticks = np.arange(0, 0.5, 5)
-    plt.yticks(my_y_ticks)
-    """
     plt.show()
 
 

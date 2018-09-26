@@ -1,5 +1,9 @@
 #!python3
 """
+based on
+
+"""
+"""
 Python 3 wrapper for identifying objects in images
 
 Requires DLL compilation
@@ -338,8 +342,6 @@ def performDetect(image_list, thresh= 0.25, configPath = "./cfg/yolov3.cfg", wei
 
     Returns
     ----------------------
-
-
     When showImage is False, list of tuples like
         ('obj_label', confidence, (bounding_box_x_px, bounding_box_y_px, bounding_box_width_px, bounding_box_height_px))
         The X and Y coordinates are from the center of the bounding box. Subtract half the width or height to get the lower corner.
@@ -422,6 +424,8 @@ def performDetect(image_list, thresh= 0.25, configPath = "./cfg/yolov3.cfg", wei
                     with open(os.path.join(eval_config['SAVE_LABEL_DIR'], str(os.path.splitext(os.path.basename(imagePath))[0]) + '.txt'), 'a') as ww:
                         ww.write('{} {} {} {} {} \n'.format(
                             rect[0], rect[2][0], rect[2][1], rect[2][2], rect[2][3]))
+
+                # TODO: drawing function
                 """
                 # only draw rect with larger than 0.5
                 if eval_config['SAVE_IMG'] and rect[1] > eval_config['SAVE_IMG_THRESHOLD']:
@@ -441,77 +445,6 @@ def performDetect(image_list, thresh= 0.25, configPath = "./cfg/yolov3.cfg", wei
                     cv2.putText(img, text, tect_location, font, 1, (0, 0, 0), 2)
                     cv2.imwrite(os.path.join(eval_config['SAVE_IMG_DIR'], os.path.basename(imagePath)), img)
                 """
-        """
-        if eval_config['SAVE_IMG'] and bboxes:
-            # remove the highly overlapped bboxes
-            r_bboxs = [bboxes[0]]
-            for bbox in bboxes[1:]:
-                for r_bbox in r_bboxs:
-                    print('bbox = ', bbox)
-                    if overlapped_ratio(bbox[2:], r_bbox[2:]) > eval_config['overlapped_ratio_threshold']:
-                        break
-                    else:
-                        r_bboxs.append(bbox)
-
-            vis_path = os.path.join(eval_config['SAVE_IMG_DIR'],
-                                    os.path.basename(imagePath))
-            img = Image.open(imagePath)
-            draw_bbox(img, filename=vis_path, bboxes=r_bboxs)
-        """
-    """
-    if showImage:
-        try:
-            from skimage import io, draw
-            import numpy as np
-            image = io.imread(imagePath)
-            print("*** "+str(len(detections))+" Results, color coded by confidence ***")
-            imcaption = []
-            for detection in detections:
-                label = detection[0]
-                confidence = detection[1]
-                pstring = label+": "+str(np.rint(100 * confidence))+"%"
-                imcaption.append(pstring)
-                print(pstring)
-                bounds = detection[2]
-                shape = image.shape
-                # x = shape[1]
-                # xExtent = int(x * bounds[2] / 100)
-                # y = shape[0]
-                # yExtent = int(y * bounds[3] / 100)
-                yExtent = int(bounds[3])
-                xEntent = int(bounds[2])
-                # Coordinates are around the center
-                xCoord = int(bounds[0] - bounds[2]/2)
-                yCoord = int(bounds[1] - bounds[3]/2)
-                boundingBox = [
-                    [xCoord, yCoord],
-                    [xCoord, yCoord + yExtent],
-                    [xCoord + xEntent, yCoord + yExtent],
-                    [xCoord + xEntent, yCoord]
-                ]
-                # Wiggle it around to make a 3px border
-                rr, cc = draw.polygon_perimeter([x[1] for x in boundingBox], [x[0] for x in boundingBox], shape= shape)
-                rr2, cc2 = draw.polygon_perimeter([x[1] + 1 for x in boundingBox], [x[0] for x in boundingBox], shape= shape)
-                rr3, cc3 = draw.polygon_perimeter([x[1] - 1 for x in boundingBox], [x[0] for x in boundingBox], shape= shape)
-                rr4, cc4 = draw.polygon_perimeter([x[1] for x in boundingBox], [x[0] + 1 for x in boundingBox], shape= shape)
-                rr5, cc5 = draw.polygon_perimeter([x[1] for x in boundingBox], [x[0] - 1 for x in boundingBox], shape= shape)
-                boxColor = (int(255 * (1 - (confidence ** 2))), int(255 * (confidence ** 2)), 0)
-                draw.set_color(image, (rr, cc), boxColor, alpha= 0.8)
-                draw.set_color(image, (rr2, cc2), boxColor, alpha= 0.8)
-                draw.set_color(image, (rr3, cc3), boxColor, alpha= 0.8)
-                draw.set_color(image, (rr4, cc4), boxColor, alpha= 0.8)
-                draw.set_color(image, (rr5, cc5), boxColor, alpha= 0.8)
-            if not makeImageOnly:
-                io.imshow(image)
-                io.show()
-            detections = {
-                "detections": detections,
-                "image": image,
-                "caption": "\n<br/>".join(imcaption)
-            }
-        except Exception as e:
-            print("Unable to show image: "+str(e))
-    """
     return None
 
 

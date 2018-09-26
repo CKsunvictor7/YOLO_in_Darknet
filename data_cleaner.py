@@ -1,39 +1,22 @@
 #!python3
 """
-the original version of darknet_detector.py
+Data Cleaner using YOLOv3 models using YOLO models, based on darknet_detector.py
+
+do data cleaning on all the images in 'raw_data_dir':
+
+1). remove the bad quality images
+2). classify images into nonfood, single_food, multiple_food
+    and save images, annotations(yolo format or xmin, ymin, xmax, ymax) separately:
+    nofood ; single & single_annos ;  multiple & multiple_annos
+
+3). reindex the images
 """
-"""
-Python 3 wrapper for identifying objects in images
-
-Requires DLL compilation
-
-Both the GPU and no-GPU version should be compiled; the no-GPU version should be renamed "yolo_cpp_dll_nogpu.dll".
-
-On a GPU system, you can force CPU evaluation by any of:
-
-- Set global variable DARKNET_FORCE_CPU to True
-- Set environment variable CUDA_VISIBLE_DEVICES to -1
-- Set environment variable "FORCE_CPU" to "true"
-
-
-To use, either run performDetect() after import, or modify the end of this file.
-
-See the docstring of performDetect() for parameters.
-
-Directly viewing or returning bounding-boxed images requires scikit-image to be installed (`pip install scikit-image`)
-
-
-Original *nix 2.7: https://github.com/pjreddie/darknet/blob/0f110834f4e18b30d5f101bf8f1724c34b7b83db/python/darknet.py
-Windows Python 2.7 version: https://github.com/AlexeyAB/darknet/blob/fc496d52bf22a0bb257300d3c79be9cd80e722cb/build/darknet/x64/darknet.py
-
-@author: Philip Kahn
-@date: 20180503
-"""
-#pylint: disable=R, W0401, W0614, W0703
 from ctypes import *
-import math
 import random
-import os
+import os, shutil
+import time
+from PIL import Image, ImageDraw, ImageFont
+from DB_tools import get_file_list
 
 def sample(probs):
     s = sum(probs)
@@ -64,7 +47,6 @@ class DETECTION(Structure):
                 ("objectness", c_float),
                 ("sort_class", c_int)]
 
-
 class IMAGE(Structure):
     _fields_ = [("w", c_int),
                 ("h", c_int),
@@ -75,10 +57,6 @@ class METADATA(Structure):
     _fields_ = [("classes", c_int),
                 ("names", POINTER(c_char_p))]
 
-
-
-#lib = CDLL("/mnt2/dc_projects/AI_DC_YOLO/libdarknet.so", RTLD_GLOBAL)
-#lib = CDLL("darknet.so", RTLD_GLOBAL)
 hasGPU = True
 if os.name == "nt":
     cwd = os.path.dirname(__file__)
@@ -196,6 +174,7 @@ predict_image = lib.network_predict_image
 predict_image.argtypes = [c_void_p, IMAGE]
 predict_image.restype = POINTER(c_float)
 
+
 def array_to_image(arr):
     import numpy as np
     # need to return old values to avoid python freeing memory
@@ -207,6 +186,7 @@ def array_to_image(arr):
     data = arr.ctypes.data_as(POINTER(c_float))
     im = IMAGE(w,h,c,data)
     return im, arr
+
 
 def classify(net, meta, im):
     out = predict_image(net, im)
@@ -220,19 +200,13 @@ def classify(net, meta, im):
     res = sorted(res, key=lambda x: -x[1])
     return res
 
+
 def detect(net, meta, image, thresh=.5, hier_thresh=.5, nms=.45, debug= False):
     """
     Performs the meat of the detection
     """
     #pylint: disable= C0321
     im = load_image(image, 0, 0)
-    #import cv2
-    #custom_image_bgr = cv2.imread(image) # use: detect(,,imagePath,)
-    #custom_image = cv2.cvtColor(custom_image_bgr, cv2.COLOR_BGR2RGB)
-    #custom_image = cv2.resize(custom_image,(lib.network_width(net), lib.network_height(net)), interpolation = cv2.INTER_LINEAR)
-    #import scipy.misc
-    #custom_image = scipy.misc.imread(image)
-    #im, arr = array_to_image(custom_image)		# you should comment line below: free_image(im)
     if debug: print("Loaded image")
     num = c_int(0)
     if debug: print("Assigned num")
@@ -277,11 +251,29 @@ def detect(net, meta, image, thresh=.5, hier_thresh=.5, nms=.45, debug= False):
     return res
 
 
+def corner_calculater(rect, img_size):
+    """
+    :param rect:
+    :param img_size: = (h, w)
+    :return:
+    """
+    (x, y, h, w) = rect
+    (img_h, img_w) = img_size
+    left_up_corner_x = int(x - w/2) if int(x - w/2) > 0 else 0
+    left_up_corner_y = int(y - h / 2) if int(y - h / 2) > 0 else 0
+
+    right_bottm_corner_x = int(x + w/2) if int(x + w/2) < img_w else img_w
+    right_bottm_corner_y = int(y + h/2) if int(y + h/2) < img_h else img_h
+
+    return (left_up_corner_x, left_up_corner_y), (right_bottm_corner_x, right_bottm_corner_y)
+
+
 netMain = None
 metaMain = None
 altNames = None
 
-def performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yolov3.cfg", weightPath = "yolov3.weights", metaPath= "./data/coco.data", showImage= True, makeImageOnly = False, initOnly= False):
+
+def performDetect(image_list, configPath = "./cfg/yolov3.cfg", weightPath = "yolov3.weights", metaPath= "./data/coco.data", initOnly= False):
     """
     Convenience function to handle the detection and returns of objects.
 
@@ -291,9 +283,6 @@ def performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yo
     ----------------
     imagePath: str
         Path to the image to evaluate. Raises ValueError if not found
-
-    thresh: float (default= 0.25)
-        The detection threshold
 
     configPath: str
         Path to the configuration file. Raises ValueError if not found
@@ -315,8 +304,6 @@ def performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yo
 
     Returns
     ----------------------
-
-
     When showImage is False, list of tuples like
         ('obj_label', confidence, (bounding_box_x_px, bounding_box_y_px, bounding_box_width_px, bounding_box_height_px))
         The X and Y coordinates are from the center of the bounding box. Subtract half the width or height to get the lower corner.
@@ -330,7 +317,7 @@ def performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yo
     """
     # Import the global variables. This lets us instance Darknet once, then just call performDetect() again without instancing again
     global metaMain, netMain, altNames #pylint: disable=W0603
-    assert 0 < thresh < 1, "Threshold should be a float between zero and one (non-inclusive)"
+    assert 0 < config['thresh'] < 1, "Threshold should be a float between zero and one (non-inclusive)"
     if not os.path.exists(configPath):
         raise ValueError("Invalid config path `"+os.path.abspath(configPath)+"`")
     if not os.path.exists(weightPath):
@@ -365,64 +352,164 @@ def performDetect(imagePath="data/dog.jpg", thresh= 0.25, configPath = "./cfg/yo
     if initOnly:
         print("Initialized detector")
         return None
-    if not os.path.exists(imagePath):
-        raise ValueError("Invalid image path `"+os.path.abspath(imagePath)+"`")
-    # Do the detection
-    #detections = detect(netMain, metaMain, imagePath, thresh)	# if is used cv2.imread(image)
-    detections = detect(netMain, metaMain, imagePath.encode("ascii"), thresh)
-    if showImage:
-        try:
-            from skimage import io, draw
-            import numpy as np
-            image = io.imread(imagePath)
-            print("*** "+str(len(detections))+" Results, color coded by confidence ***")
-            imcaption = []
-            for detection in detections:
-                label = detection[0]
-                confidence = detection[1]
-                pstring = label+": "+str(np.rint(100 * confidence))+"%"
-                imcaption.append(pstring)
-                print(pstring)
-                bounds = detection[2]
-                shape = image.shape
-                # x = shape[1]
-                # xExtent = int(x * bounds[2] / 100)
-                # y = shape[0]
-                # yExtent = int(y * bounds[3] / 100)
-                yExtent = int(bounds[3])
-                xEntent = int(bounds[2])
-                # Coordinates are around the center
-                xCoord = int(bounds[0] - bounds[2]/2)
-                yCoord = int(bounds[1] - bounds[3]/2)
-                boundingBox = [
-                    [xCoord, yCoord],
-                    [xCoord, yCoord + yExtent],
-                    [xCoord + xEntent, yCoord + yExtent],
-                    [xCoord + xEntent, yCoord]
-                ]
-                # Wiggle it around to make a 3px border
-                rr, cc = draw.polygon_perimeter([x[1] for x in boundingBox], [x[0] for x in boundingBox], shape= shape)
-                rr2, cc2 = draw.polygon_perimeter([x[1] + 1 for x in boundingBox], [x[0] for x in boundingBox], shape= shape)
-                rr3, cc3 = draw.polygon_perimeter([x[1] - 1 for x in boundingBox], [x[0] for x in boundingBox], shape= shape)
-                rr4, cc4 = draw.polygon_perimeter([x[1] for x in boundingBox], [x[0] + 1 for x in boundingBox], shape= shape)
-                rr5, cc5 = draw.polygon_perimeter([x[1] for x in boundingBox], [x[0] - 1 for x in boundingBox], shape= shape)
-                boxColor = (int(255 * (1 - (confidence ** 2))), int(255 * (confidence ** 2)), 0)
-                draw.set_color(image, (rr, cc), boxColor, alpha= 0.8)
-                draw.set_color(image, (rr2, cc2), boxColor, alpha= 0.8)
-                draw.set_color(image, (rr3, cc3), boxColor, alpha= 0.8)
-                draw.set_color(image, (rr4, cc4), boxColor, alpha= 0.8)
-                draw.set_color(image, (rr5, cc5), boxColor, alpha= 0.8)
-            if not makeImageOnly:
-                io.imshow(image)
-                io.show()
-            detections = {
-                "detections": detections,
-                "image": image,
-                "caption": "\n<br/>".join(imcaption)
-            }
-        except Exception as e:
-            print("Unable to show image: "+str(e))
-    return detections
+
+    id = config['id_starts_from']
+
+    # make directories
+    no_food_dir = os.path.join(config['dst_dir'], 'nofood')
+    single_food_dir = os.path.join(config['dst_dir'], 'single')
+    single_food_annos_dir = os.path.join(config['dst_dir'], 'single_annos')
+    mulitple_food_dir = os.path.join(config['dst_dir'], 'multiple')
+    mulitple_food_annos_dir = os.path.join(config['dst_dir'], 'multiple_annos')
+    for dir in [no_food_dir, single_food_dir, mulitple_food_dir,
+                single_food_annos_dir, mulitple_food_annos_dir]:
+        if not os.path.exists(dir):
+            print('{} does not exist, create new one'.format(dir))
+            os.mkdir(dir)
+    print('len(image_list)=', len(image_list))
+    for imagePath in image_list:
+        print('--------------- Detecting {} ---------------'.format(imagePath))
+        s_time = time.time()
+        """
+        bboxes is a list, each element is a list: 
+        ('obj_label', confidence, (bounding_box_x_px, bounding_box_y_px, bounding_box_width_px, bounding_box_height_px)
+        """
+        bboxes = detect(netMain, metaMain, imagePath.encode("ascii"), config['thresh'])
+        print('detection time = ', time.time() - s_time)
+
+        if len(bboxes) == 0:
+            print('no food detected@{}'.format(imagePath))
+        elif len(bboxes) == 1:
+            print('nb of bbox = {} @{}'.format(len(bboxes), imagePath))
+            # move image
+            shutil.copyfile(imagePath, os.path.join(single_food_dir, '{}{}'.format(id, os.path.splitext(os.path.basename(imagePath))[1])))
+            # write annotations
+            with open(os.path.join(single_food_annos_dir, '{}.txt'.format(id)), 'w') as w:
+                for rect in bboxes:
+                    if config['annos_format'] == 'YOLO':
+                        w.write('{} {} {} {} {} \n'.format(
+                        rect[0], rect[2][0], rect[2][1], rect[2][2], rect[2][3]))
+                    elif config['annos_format'] == 'TF':
+                        #TODO
+                        pass
+            id += 1
+        else:
+            print('nb of bbox = {} @{}'.format(len(bboxes), imagePath))
+            # move image
+            shutil.copyfile(imagePath, os.path.join(mulitple_food_dir, '{}{}'.format(id, os.path.splitext(os.path.basename(imagePath))[1])))
+            # write annotations
+            with open(os.path.join(mulitple_food_annos_dir, '{}.txt'.format(id)), 'w') as w:
+                for rect in bboxes:
+                    if config['annos_format'] == 'YOLO':
+                        w.write('{} {} {} {} {} \n'.format(
+                            rect[0], rect[2][0], rect[2][1], rect[2][2],
+                            rect[2][3]))
+                    elif config['annos_format'] == 'TF':
+                        # TODO
+                        pass
+            id += 1
+    return None
+
+
+
+
+gpu7_exp14 = {
+    'raw_img_dir':'/mnt2/DB/test_samples', # should be a copy from S3 server
+    'dst_dir':'/mnt2/DB/clean_DB',
+    'Model_PATH': "/mnt2/models/YOLO/exp14_2/exp14_2_7000.weights",
+    ".cfg": "exps/exp14_2.cfg",
+    ".data": "exps/exp14_2.data",
+
+    'min_w':448, 'min_h':448,
+    'thresh':0.25,  # The detection threshold, default = 0.25
+    'id_starts_from':10000,
+    'annos_format':'YOLO', # YOLO or TF
+}
+
+config = gpu7_exp14
+
+
+def overlapped_ratio(box1, box2):
+    """
+    :param area_1 & param area_2: [xmin,  ymin, xmax, ymax]
+    :return: overlapped ratio
+    """
+    print(box1)
+    xmin_1, ymin_1, xmax_1, ymax_1 = float(box1[0]), float(box1[1]), float(box1[2]), float(box1[3])
+    xmin_2, ymin_2, xmax_2, ymax_2 = float(box2[0]), float(box2[1]), float(box2[2]), float(box2[3])
+    overlapped_area = (min(xmax_1, xmax_2) - max(xmin_1, xmin_2))*(min(ymax_1, ymax_2) - max(ymin_1, ymin_2))
+    area_1 = (xmax_1 - xmin_1)*(ymax_1 - ymin_1)
+    area_2 = (xmax_2 - xmin_2)*(ymax_2 - ymin_2)
+    """
+        area_1 = [float(area_1[0]), float(area_1[1]), float(area_1[2]), float(area_1[3])]
+        area_2 = [float(area_2[0]), float(area_2[1]), float(area_2[2]), float(area_2[3])]
+        overlapped_area = (min([area_1[3], area_2[3]]) - max([area_1[1], area_2[1]]))*(min([area_1[2], area_2[2]]) - max([area_1[0], area_2[0]]))
+        if overlapped_area > .0:
+            overlapped_area_1 = overlapped_area/((area_1[2]-area_1[0])*(area_1[3]-area_1[1]))
+            overlapped_area_2 = overlapped_area/((area_2[2]-area_2[0])*(area_2[3]-area_2[1]))
+            # print('{:.4f}  {:.4f}'.format(overlapped_area_1, overlapped_area_2))
+            return max([overlapped_area_1, overlapped_area_2])
+        else:
+            return .0
+    """
+
+    if overlapped_area > 0:
+        return overlapped_area/(area_1 + area_2 - overlapped_area)
+    else:
+        return 0
+
+
+def draw_bbox(img, filename, bboxes):
+    """
+    bboxes = name xmin ymin xmax ymax
+    """
+    color_list= [(0,255,255), (255,255,0), (255,0,255), (255,255,255),  (0,255,0), (0,0,255)]
+    for idx, box in enumerate(bboxes):
+        #LU_corner = (float(box[1][0]) - float(box[1][2])/2, float(box[1][1]) - float(box[1][3])/2)
+        #RD_corner = (float(box[1][0]) + float(box[1][2])/2, float(box[1][1]) + float(box[1][3])/2)
+        LU_corner = (box[1], box[2])
+        RD_corner = (box[3], box[4])
+        if idx < len(color_list):
+            rect_color = color_list[idx]
+            font_color = color_list[idx]
+        else:
+            rect_color = (0, 0, 0)
+            font_color = (0, 0, 0)
+
+        xSize, ySize = img.size
+        # ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeMono.ttf", 28, encoding="unic")
+        fnt = ImageFont.truetype(font="/System/Library/Fonts/SFNSText.ttf", size=min(xSize, ySize) // 10)
+
+        drawimg = ImageDraw.Draw(img)
+        drawimg.rectangle((LU_corner, RD_corner),fill=None,outline=rect_color)
+        drawimg.text(LU_corner, box[0], fill=font_color, font = fnt)
+    #img.show()
+    img.save(filename)
+
+
+def bad_quality_remover(dir):
+    img_list = get_file_list(dir, extensions=('.jpg', 'jpeg', '.png', '.bmp', '.JPG', 'JPEG', '.PNG', '.BMP'))
+    print('len(img_list))=', len(img_list))
+    good_img_list = []
+    for img_path in img_list:
+        img = Image.open(img_path)
+        if img.size[0] < config['min_w'] or img.size[1] < config['min_h']:
+            print('the quality of {} is not good enough, skip'.format(img_path))
+        else:
+            good_img_list.append(img_path)
+
+    return good_img_list
+
+
+def main():
+    # 1. read file list & remove the one with bad quality
+    print('remove bad quality images, which w < {} than or h < {}'.
+          format(config['min_w'], config['min_h']))
+    good_img_list = bad_quality_remover(dir=config['raw_img_dir'])
+    # 2. do detection
+    performDetect(image_list=good_img_list, configPath=config['.cfg'], weightPath=config['Model_PATH'],
+                  metaPath=config['.data'], initOnly= False)
+
 
 if __name__ == "__main__":
-    print(performDetect())
+    main()

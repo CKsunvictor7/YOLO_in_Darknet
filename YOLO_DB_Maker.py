@@ -22,7 +22,7 @@ Output:
 import os
 import shutil
 from PIL import Image
-from YOLODB_tools import get_file_list, DB_info_name_version, split_by_KFold, \
+from DB_tools import get_file_list, DB_info_name_version, split_by_KFold, \
     id_to_name_conversion, id_to_name_conversion_for_intern_UEC, DB_info_id_version, \
     YOLODB_check
 import numpy as np
@@ -299,6 +299,7 @@ def maker():
     YOLODB_check(server['val_list_path'])
 
     # step7. download & use labelImg tool to check
+    # step8. put all annotations into the same folder of images
 
 
 def make_food_only_DB(src_anno_dir, dst_anno_dir):
