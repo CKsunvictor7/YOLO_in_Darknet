@@ -1,13 +1,5 @@
 """
-evaluate the detection results
-by
-1) visualization: visualize the detection results from 'darknet_detector.py'
-
-2) mAP :
-
-3) Acc (do not care about bbox location)
-
-4) Confusion matrix
+visualize the detection results from 'darknet_detector.py'
 
 """
 from PIL import Image, ImageDraw, ImageFont
@@ -65,6 +57,7 @@ def overlapped_ratio(box1, box2):
     else:
         return 0
 
+
 def draw_bbox(img, name_to_save, bboxes):
     """
     bboxes = a list of [name xmin ymin xmax ymax]
@@ -93,28 +86,7 @@ def draw_bbox(img, name_to_save, bboxes):
     img.save(name_to_save)
 
 
-
 def main():
-
-    """
-    bboxs = []
-    with open(os.path.join('/Users/fincep004/Desktop/finc_food_db/exp11_detection_155/308645.txt'), 'r') as r:
-        for line in r.readlines():
-            name = ''
-            for x in line.rstrip().split(' '):
-                if isDigit(x):
-                    break
-                name = name + ' ' + x
-            # format = name(may with blank) x y w h
-            coord = line.rstrip().split(' ')[-4:]
-            xmin = float(coord[0]) - float(coord[2]) / 2
-            ymin = float(coord[1]) - float(coord[3]) / 2
-            xmax = float(coord[0]) + float(coord[2]) / 2
-            ymax = float(coord[1]) + float(coord[3]) / 2
-            bboxs.append([name, xmin, ymin, xmax, ymax])
-
-    exit()
-    """
     # UEC v3 format:  name(may with blank) confidence x y w h
     anno_list = get_file_list(config['SAVE_DETECTION_DIR'], extensions=('txt'))
     for f in anno_list:
